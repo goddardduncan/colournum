@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instant Impressionist</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+        .canvas-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        canvas {
+            border: 1px solid #000;
+            width: 100%;
+            height: auto;
+        }
+        #upload-btn {
+            margin-top: 20px;
+        }
+        .slider-container {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        #grid-slider, #label-slider, #grid-size-slider {
+            width: 200px;
+            margin-left: 10px;
+        }
+        .ui-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 1;
+            position: relative;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/color-thief/2.3.0/color-thief.min.js"></script>
+</head>
+<body>
+    <div class="ui-container">
+        <h2>Instant Impressionist: Upload Image + Color by Numbers</h2>
+        <input type="file" id="upload-btn" accept="image/*">
+        <ul>
+            <li><strong>[ ]</strong>: Cycle through canvases (right to move forward, left to go back).</li>
+            <li><strong>Escape</strong>: Show all canvases in grid mode.</li>
+            <li><strong>Z</strong>: Zoom in / cycle colors</li>
+            <li><strong>X</strong>: Zoom out / cycle colors.</li>
+        </ul>
+        <div class="slider-container">
+            <label for="grid-slider">Select Grid:</label>
+            <input type="range" id="grid-slider" min="1" max="4" value="1" step="1">
+        </div>
+
+        <div class="slider-container">
+            <label for="label-slider">Select Color Label:</label>
+            <input type="range" id="label-slider" min="1" max="1" value="1">
+        </div>
+        
+        <div class="slider-container">
+            <label for="grid-size-slider">Dot Size:</label>
+            <input type="range" id="grid-size-slider" min="5" max="25" value="15" step="1">
+        </div>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="originalCanvas"></canvas>
+        <canvas id="contourCanvas"></canvas>
+        <canvas id="contourOnlyCanvas"></canvas>
+        <canvas id="futureCanvas"></canvas>
+    </div>
+    
+    <script>
+        const originalCanvas = document.getElementById('originalCanvas');
+        const originalCtx = originalCanvas.getContext('2d');
+        const contourCanvas = document.getElementById('contourCanvas');
+        const contourCtx = contourCanvas.getContext('2d');
+        const contourOnlyCanvas = document.getElementById('contourOnlyCanvas');
+        const contourOnlyCtx = contourOnlyCanvas.getContext('2d');
+        const futureCanvas = document.getElementById('futureCanvas');
+        const futureCtx = futureCanvas.getContext('2d');
+        const uploadBtn = document.getElementById('upload-btn');
+        const gridSlider = document.getElementById('grid-slider');
+        const labelSlider = document.getElementById('label-slider');
+        const gridSizeSlider = document.getElementById('grid-size-slider');
+        
+        const gridOptions = [
+            { columns: 0, rows: 0 },
+            { columns: 6, rows: 4 },
+            { columns: 4, rows: 6 },
+            { columns: 6, rows: 6 }
+        ];
+
+        let palette = [];
+        const labelPositions = [];
+        let contourImageData;
+        let gridSize = parseInt(gridSizeSlider.value);
+
+        // Event listener for image upload
+        uploadBtn.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const img = new Image();
+                img.onload = function () {
+                    setupCanvasDimensions(img);
+                    
+                    // Draw the image independently on each canvas
+                    originalCtx.drawImage(img, 0, 0);
+                    contourCtx.drawImage(img, 0, 0);
+                    contourOnlyCtx.drawImage(img, 0, 0);
+                    
+                    palette = generateColorPalette(img);
+                    labelSlider.max = 21;
+                    
+                    const imageData = contourCtx.getImageData(0, 0, contourCanvas.width, contourCanvas.height);
+                    applySobelEdgeDetectionOnly(imageData, contourOnlyCtx, gridOptions[gridSlider.value - 1].columns, gridOptions[gridSlider.value - 1].rows);
+                    applySobelEdgeDetection(imageData);
+                    labelRegionsWithColors(imageData, palette);
+                    drawColorSwatches(palette);
+                };
+                img.src = URL.createObjectURL(file);
+            }
+        });
+
+        // Event listener for grid slider
+        gridSlider.addEventListener('input', () => {
+            const selectedGrid = gridOptions[gridSlider.value - 1];
+            reloadContourCanvas(selectedGrid.columns, selectedGrid.rows);
+        });
+
+        // Event listener for grid size slider
+        gridSizeSlider.addEventListener('input', () => {
+            gridSize = parseInt(gridSizeSlider.value);
+            reloadContourCanvas(gridOptions[gridSlider.value - 1].columns, gridOptions[gridSlider.value - 1].rows);
+        });
+
+        // Event listener for label slider
+        labelSlider.addEventListener('input', () => {
+            const selectedLabel = parseInt(labelSlider.value);
+            if (selectedLabel === 21) {
+                labelPositions.forEach(({ x, y, label: storedLabel }) => {
+                    const colorObj = palette.find(color => color.label === storedLabel);
+                    const color = colorObj ? `rgb(${colorObj.color[0]}, ${colorObj.color[1]}, ${colorObj.color[2]})` : "black";
+                    
+                    contourCtx.beginPath();
+                    contourCtx.arc(x, y - 6, 15, 0, Math.PI * 2);
+                    contourCtx.fillStyle = color;
+                    contourCtx.fill();
+                    
+                    contourCtx.font = "bold 16px Arial";
+                    contourCtx.fillStyle = "white";
+                    contourCtx.fillText(storedLabel, x, y);
+                });
+                
+                palette.forEach((colorObj, index) => {
+                    const row = Math.floor(index / 6);
+                    const col = index % 6;
+                    const x = col * 15;
+                    const y = row * 15;
+                    
+                    futureCtx.fillStyle = `rgb(${colorObj.color[0]}, ${colorObj.color[1]}, ${colorObj.color[2]})`;
+                    futureCtx.fillRect(x, y, 15, 15);
+                    
+                    futureCtx.fillStyle = "#000";
+                    futureCtx.font = "bold 10px Arial";
+                    futureCtx.textAlign = "center";
+                    futureCtx.textBaseline = "middle";
+                    futureCtx.fillText(colorObj.label, x + 15 / 2, y + 15 / 2);
+                });
+            } else {
+                toggleLabelBoldness(selectedLabel, true);
+                highlightColorSwatch(selectedLabel);
+            }
+        });
+
+        function setupCanvasDimensions(img) {
+            originalCanvas.width = img.width;
+            originalCanvas.height = img.height;
+            contourCanvas.width = img.width;
+            contourCanvas.height = img.height;
+            contourOnlyCanvas.width = img.width;
+            contourOnlyCanvas.height = img.height;
+        }
+
+function reloadContourCanvas(columns, rows) {
+    const file = uploadBtn.files[0];
+    if (file) {
+        const img = new Image();
+        img.onload = function () {
+            contourCtx.clearRect(0, 0, contourCanvas.width, contourCanvas.height);
+            originalCtx.clearRect(0, 0, originalCanvas.width, originalCanvas.height);
+
+            contourCtx.drawImage(img, 0, 0);
+            originalCtx.drawImage(img, 0, 0);
+            
+            const imageData = contourCtx.getImageData(0, 0, contourCanvas.width, contourCanvas.height);
+            applySobelEdgeDetectionOnly(imageData, contourOnlyCtx, columns, rows);
+            applySobelEdgeDetection(imageData);
+            labelRegionsWithColors(imageData, palette);
+            drawColorSwatches(palette);
+
+            // Draw grid overlay on both the originalCanvas and contourOnlyCanvas
+            drawGridOverlay(originalCtx, columns, rows);
+            drawGridOverlay(contourOnlyCtx, columns, rows);
+            drawGridOverlay(contourCtx, columns, rows);
+        };
+        img.src = URL.createObjectURL(file);
+    }
+}
+
+
+        function generateColorPalette(image) {
+            const colorThief = new ColorThief();
+            const palette = colorThief.getPalette(image, 24);
+            return palette.map((color, index) => ({ color, label: index + 1 }));
+        }
+
+        function drawGridOverlay(ctx, columns, rows) {
+            const width = ctx.canvas.width;
+            const height = ctx.canvas.height;
+            const colWidth = width / columns;
+            const rowHeight = height / rows;
+
+            ctx.strokeStyle = 'grey';
+            ctx.lineWidth = 1;
+
+            for (let i = 1; i < columns; i++) {
+                const x = i * colWidth;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+
+            for (let j = 1; j < rows; j++) {
+                const y = j * rowHeight;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+        }
+
+        function applySobelEdgeDetectionOnly(originalImageData, ctx, columns, rows) {
+            ctx.putImageData(originalImageData, 0, 0);
+            const imgData = ctx.getImageData(0, 0, contourOnlyCanvas.width, contourOnlyCanvas.height);
+            const grayscaleData = toGrayscale(imgData);
+            const sobelData = sobelFilter(grayscaleData, imgData.width, imgData.height);
+
+            const edgeImageData = ctx.createImageData(imgData.width, imgData.height);
+            for (let i = 0; i < sobelData.length; i++) {
+                const intensity = sobelData[i];
+                edgeImageData.data[i * 4] = 0;
+                edgeImageData.data[i * 4 + 1] = 0;
+                edgeImageData.data[i * 4 + 2] = 0;
+                edgeImageData.data[i * 4 + 3] = intensity;
+            }
+            ctx.putImageData(edgeImageData, 0, 0);
+            drawGridOverlay(ctx, columns, rows);
+        }
+
+        function applySobelEdgeDetection(originalImageData) {
+            contourCtx.putImageData(originalImageData, 0, 0);
+            const imgData = contourCtx.getImageData(0, 0, contourCanvas.width, contourCanvas.height);
+            const grayscaleData = toGrayscale(imgData);
+            const sobelData = sobelFilter(grayscaleData, imgData.width, imgData.height);
+
+            const edgeImageData = contourCtx.createImageData(imgData.width, imgData.height);
+            for (let i = 0; i < sobelData.length; i++) {
+                const intensity = sobelData[i];
+                edgeImageData.data[i * 4] = 0;
+                edgeImageData.data[i * 4 + 1] = 0;
+                edgeImageData.data[i * 4 + 2] = 0;
+                edgeImageData.data[i * 4 + 3] = intensity;
+            }
+            contourCtx.putImageData(edgeImageData, 0, 0);
+            contourImageData = contourCtx.getImageData(0, 0, contourCanvas.width, contourCanvas.height);
+        }
+
+        function toGrayscale(imgData) {
+            const grayscale = new Uint8ClampedArray(imgData.width * imgData.height);
+            for (let i = 0; i < imgData.data.length; i += 4) {
+                const r = imgData.data[i];
+                const g = imgData.data[i + 1];
+                const b = imgData.data[i + 2];
+                grayscale[i / 4] = 0.299 * r + 0.587 * g + 0.114 * b;
+            }
+            return grayscale;
+        }
+
+        function sobelFilter(grayscale, width, height) {
+            const sobelData = new Uint8ClampedArray(width * height);
+            const kernelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+            const kernelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    let pixelX = 0;
+                    let pixelY = 0;
+                    for (let ky = -1; ky <= 1; ky++) {
+                        for (let kx = -1; kx <= 1; kx++) {
+                            const pixel = grayscale[(y + ky) * width + (x + kx)];
+                            pixelX += pixel * kernelX[(ky + 1) * 3 + (kx + 1)];
+                            pixelY += pixel * kernelY[(ky + 1) * 3 + (kx + 1)];
+                        }
+                    }
+                    const magnitude = Math.sqrt(pixelX * pixelX + pixelY * pixelY);
+                    sobelData[y * width + x] = magnitude > 255 ? 255 : magnitude;
+                }
+            }
+            return sobelData;
+        }
+
+        function labelRegionsWithColors(imageData, palette) {
+            const width = imageData.width;
+            const height = imageData.height;
+            labelPositions.length = 0;
+
+            for (let y = 0; y < height; y += gridSize) {
+                for (let x = 0; x < width; x += gridSize) {
+                    const avgColor = getAverageColor(imageData, x, y);
+                    const closestColor = findClosestColor(avgColor, palette);
+                    drawLabel(x, y, closestColor.label);
+                    labelPositions.push({ x, y, label: closestColor.label });
+                }
+            }
+        }
+
+        function getAverageColor(imageData, startX, startY) {
+            const width = imageData.width;
+            let totalR = 0, totalG = 0, totalB = 0, count = 0;
+
+            for (let y = startY; y < startY + 10; y++) {
+                for (let x = startX; x < startX + 10; x++) {
+                    const index = (y * width + x) * 4;
+                    totalR += imageData.data[index];
+                    totalG += imageData.data[index + 1];
+                    totalB += imageData.data[index + 2];
+                    count++;
+                }
+            }
+            return [totalR / count, totalG / count, totalB / count];
+        }
+
+        function findClosestColor(color, palette) {
+            let closestMatch = palette[0];
+            let minDistance = Infinity;
+
+            palette.forEach((paletteColor) => {
+                const distance = colorDistance(color, paletteColor.color);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestMatch = paletteColor;
+                }
+            });
+            return closestMatch;
+        }
+
+        function colorDistance(color1, color2) {
+            return Math.sqrt(
+                Math.pow(color1[0] - color2[0], 2) +
+                Math.pow(color1[1] - color2[1], 2) +
+                Math.pow(color1[2] - color2[2], 2)
+            );
+        }
+
+        function drawLabel(x, y, label) {
+            contourCtx.font = "12px Arial";
+            contourCtx.fillStyle = "black";
+            contourCtx.fillText(label, x, y);
+        }
+
+        function drawColorSwatches(palette) {
+            const swatchSize = 15;
+            const columns = 6;
+            const rows = Math.ceil(palette.length / columns);
+
+            futureCanvas.width = swatchSize * columns;
+            futureCanvas.height = swatchSize * rows;
+
+            futureCtx.clearRect(0, 0, futureCanvas.width, futureCanvas.height);
+
+            palette.forEach((colorObj, index) => {
+                const row = Math.floor(index / columns);
+                const col = index % columns;
+                const x = col * swatchSize;
+                const y = row * swatchSize;
+
+                futureCtx.fillStyle = `rgb(${colorObj.color[0]}, ${colorObj.color[1]}, ${colorObj.color[2]})`;
+                futureCtx.fillRect(x, y, swatchSize, swatchSize);
+
+                futureCtx.fillStyle = "#000";
+                futureCtx.font = "10px Arial";
+                futureCtx.textAlign = "center";
+                futureCtx.textBaseline = "middle";
+                futureCtx.fillText(colorObj.label, x + swatchSize / 2, y + swatchSize / 2);
+            });
+        }
+
+function toggleLabelBoldness(label, isBold) {
+    // Restore the original contour image data
+    contourCtx.putImageData(contourImageData, 0, 0);
+
+    // Redraw the grid overlay to keep it visible
+    const selectedGrid = gridOptions[gridSlider.value - 1];
+    drawGridOverlay(contourCtx, selectedGrid.columns, selectedGrid.rows);
+
+    // Iterate through each label position and update the font style for boldness
+    labelPositions.forEach(({ x, y, label: storedLabel }) => {
+        const colorObj = palette.find(color => color.label === storedLabel);
+        const color = colorObj ? `rgb(${colorObj.color[0]}, ${colorObj.color[1]}, ${colorObj.color[2]})` : "black";
+
+        if (storedLabel === label && isBold) {
+            contourCtx.beginPath();
+            contourCtx.arc(x, y - 6, 15, 0, Math.PI * 2);
+            contourCtx.fillStyle = color;
+            contourCtx.fill();
+        }
+
+        contourCtx.font = storedLabel === label && isBold ? "bold 16px Arial" : "12px Arial";
+        contourCtx.fillStyle = storedLabel === label && isBold ? "white" : color;
+        contourCtx.fillText(storedLabel, x, y);
+    });
+}
+
+
+        function highlightColorSwatch(label) {
+            const swatchSize = 15;
+            futureCtx.clearRect(0, 0, futureCanvas.width, futureCanvas.height);
+
+            palette.forEach((colorObj, index) => {
+                const row = Math.floor(index / 6);
+                const col = index % 6;
+                const x = col * swatchSize;
+                const y = row * swatchSize;
+
+                futureCtx.fillStyle = `rgb(${colorObj.color[0]}, ${colorObj.color[1]}, ${colorObj.color[2]})`;
+                futureCtx.fillRect(x, y, swatchSize, swatchSize);
+
+                futureCtx.fillStyle = "#000";
+                futureCtx.font = label === colorObj.label ? "bold 10px Arial" : "10px Arial";
+                futureCtx.textAlign = "center";
+                futureCtx.textBaseline = "middle";
+                futureCtx.fillText(colorObj.label, x + swatchSize / 2, y + swatchSize / 2);
+            });
+        }
+
+        const canvases = [
+            document.getElementById('originalCanvas'),
+            document.getElementById('contourCanvas'),
+            document.getElementById('contourOnlyCanvas'),
+            document.getElementById('futureCanvas')
+        ];
+
+        let currentCanvasIndex = -1; // Start with all canvases visible
+        let currentCanvasScale = 1;  // Default scale (no zoom)
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === ']') {
+                currentCanvasIndex = (currentCanvasIndex + 1) % canvases.length; // Move right
+            } else if (event.key === '[') {
+                currentCanvasIndex = (currentCanvasIndex - 1 + canvases.length) % canvases.length; // Move left
+            } else if (event.key === 'Escape') {
+                currentCanvasIndex = -1; // Show all canvases
+            } else if (event.key === 'z' || (currentCanvasIndex === 1 && event.key === 'a')) {
+                if (currentCanvasIndex === 1) {
+                    labelSlider.value = Math.max(parseInt(labelSlider.value) - 1, labelSlider.min); // Decrease label
+                    labelSlider.dispatchEvent(new Event('input'));
+                } else {
+                    currentCanvasScale += (currentCanvasIndex === 3 ? 0.05 : 0.05); // Larger zoom for futureCanvas
+                }
+            } else if (event.key === 'x' || (currentCanvasIndex === 1 && event.key === 's')) {
+                if (currentCanvasIndex === 1) {
+                    labelSlider.value = Math.min(parseInt(labelSlider.value) + 1, labelSlider.max); // Increase label
+                    labelSlider.dispatchEvent(new Event('input'));
+                } else {
+                    currentCanvasScale = Math.max(0.7, currentCanvasScale - (currentCanvasIndex === 3 ? 0.05 : 0.05)); // Larger zoom for futureCanvas
+                }
+            }
+            updateCanvasDisplay();
+        });
+
+        function updateCanvasDisplay() {
+            if (currentCanvasIndex === -1) {
+                document.querySelector('.canvas-container').style.display = 'grid';
+                canvases.forEach(canvas => {
+                    canvas.style.display = 'block';
+                    canvas.style.width = '100%';
+                    canvas.style.height = 'auto';
+                    canvas.style.transform = 'scale(1)';
+                    canvas.style.zIndex = '1';
+                });
+            } else {
+                document.querySelector('.canvas-container').style.display = 'flex';
+                canvases.forEach((canvas, index) => {
+                    if (index === currentCanvasIndex) {
+                        canvas.style.display = 'block';
+                        canvas.style.transform = `scale(${currentCanvasScale})`;
+                        canvas.style.zIndex = '10';
+                    } else {
+                        canvas.style.display = 'none';
+                        canvas.style.zIndex = '1';
+                    }
+                    canvas.style.transformOrigin = 'center';
+                });
+            }
+        }
+
+        updateCanvasDisplay();
+    </script>
+</body>
+</html>
