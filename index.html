@@ -466,58 +466,84 @@ function toggleLabelBoldness(label, isBold) {
         let currentCanvasIndex = -1; // Start with all canvases visible
         let currentCanvasScale = 1;  // Default scale (no zoom)
 
-        document.addEventListener('keydown', (event) => {
-            if (event.key === ']') {
-                currentCanvasIndex = (currentCanvasIndex + 1) % canvases.length; // Move right
-            } else if (event.key === '[') {
-                currentCanvasIndex = (currentCanvasIndex - 1 + canvases.length) % canvases.length; // Move left
-            } else if (event.key === 'Escape') {
-                currentCanvasIndex = -1; // Show all canvases
-            } else if (event.key === 'z' || (currentCanvasIndex === 1 && event.key === 'a')) {
-                if (currentCanvasIndex === 1) {
-                    labelSlider.value = Math.max(parseInt(labelSlider.value) - 1, labelSlider.min); // Decrease label
-                    labelSlider.dispatchEvent(new Event('input'));
-                } else {
-                    currentCanvasScale += (currentCanvasIndex === 3 ? 0.05 : 0.05); // Larger zoom for futureCanvas
-                }
-            } else if (event.key === 'x' || (currentCanvasIndex === 1 && event.key === 's')) {
-                if (currentCanvasIndex === 1) {
-                    labelSlider.value = Math.min(parseInt(labelSlider.value) + 1, labelSlider.max); // Increase label
-                    labelSlider.dispatchEvent(new Event('input'));
-                } else {
-                    currentCanvasScale = Math.max(0.7, currentCanvasScale - (currentCanvasIndex === 3 ? 0.05 : 0.05)); // Larger zoom for futureCanvas
-                }
-            }
-            updateCanvasDisplay();
-        });
+// Variables for panning
+let offsetX = 0;
+let offsetY = 0;
+const panStep = 10; // Amount to pan for each arrow key press
 
-        function updateCanvasDisplay() {
-            if (currentCanvasIndex === -1) {
-                document.querySelector('.canvas-container').style.display = 'grid';
-                canvases.forEach(canvas => {
-                    canvas.style.display = 'block';
-                    canvas.style.width = '100%';
-                    canvas.style.height = 'auto';
-                    canvas.style.transform = 'scale(1)';
-                    canvas.style.zIndex = '1';
-                });
-            } else {
-                document.querySelector('.canvas-container').style.display = 'flex';
-                canvases.forEach((canvas, index) => {
-                    if (index === currentCanvasIndex) {
-                        canvas.style.display = 'block';
-                        canvas.style.transform = `scale(${currentCanvasScale})`;
-                        canvas.style.zIndex = '10';
-                    } else {
-                        canvas.style.display = 'none';
-                        canvas.style.zIndex = '1';
-                    }
-                    canvas.style.transformOrigin = 'center';
-                });
-            }
+document.addEventListener('keydown', (event) => {
+      // Prevent default scrolling behavior for Up and Down Arrow keys
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+    }
+    if (event.key === 'Enter') {
+        // Reset canvas scale and panning
+        currentCanvasScale = 1; // Reset zoom
+        offsetX = 0; // Reset horizontal panning
+        offsetY = 0; // Reset vertical panning
+    }
+    if (event.key === ']') {
+        currentCanvasIndex = (currentCanvasIndex + 1) % canvases.length; // Move right
+    } else if (event.key === '[') {
+        currentCanvasIndex = (currentCanvasIndex - 1 + canvases.length) % canvases.length; // Move left
+    } else if (event.key === 'Escape') {
+        currentCanvasIndex = -1; // Show all canvases
+    } else if (event.key === 'z' || (currentCanvasIndex === 1 && event.key === 'a')) {
+        if (currentCanvasIndex === 1) {
+            labelSlider.value = Math.max(parseInt(labelSlider.value) - 1, labelSlider.min); // Decrease label
+            labelSlider.dispatchEvent(new Event('input'));
+        } else {
+            currentCanvasScale += (currentCanvasIndex === 3 ? 0.9 : 0.2); // Larger zoom for futureCanvas
         }
+    } else if (event.key === 'x' || (currentCanvasIndex === 1 && event.key === 's')) {
+        if (currentCanvasIndex === 1) {
+            labelSlider.value = Math.min(parseInt(labelSlider.value) + 1, labelSlider.max); // Increase label
+            labelSlider.dispatchEvent(new Event('input'));
+        } else {
+            currentCanvasScale = Math.max(0.7, currentCanvasScale - (currentCanvasIndex === 3 ? 0.9 : 0.2)); // Larger zoom for futureCanvas
+        }
+    } else if (event.key === 'ArrowDown') {
+        offsetY -= panStep; // Pan up
+    } else if (event.key === 'ArrowUp') {
+        offsetY += panStep; // Pan down
+    } else if (event.key === 'ArrowRight') {
+        offsetX -= panStep; // Pan left
+    } else if (event.key === 'ArrowLeft') {
+        offsetX += panStep; // Pan right
+    }
+    
+    updateCanvasDisplay();
+});
 
-        updateCanvasDisplay();
-    </script>
+function updateCanvasDisplay() {
+    if (currentCanvasIndex === -1) {
+        document.querySelector('.canvas-container').style.display = 'grid';
+        canvases.forEach(canvas => {
+            canvas.style.display = 'block';
+            canvas.style.width = '100%';
+            canvas.style.height = 'auto';
+            canvas.style.transform = 'scale(1)';
+            canvas.style.zIndex = '1';
+            canvas.style.transform = `translate(0px, 0px)`;
+        });
+    } else {
+        document.querySelector('.canvas-container').style.display = 'flex';
+        canvases.forEach((canvas, index) => {
+            if (index === currentCanvasIndex) {
+                canvas.style.display = 'block';
+                canvas.style.transform = `scale(${currentCanvasScale}) translate(${offsetX}px, ${offsetY}px)`;
+                canvas.style.zIndex = '10';
+            } else {
+                canvas.style.display = 'none';
+                canvas.style.zIndex = '1';
+            }
+            canvas.style.transformOrigin = 'center';
+        });
+    }
+}
+
+// Initialize canvas display
+updateCanvasDisplay();
+  </script>
 </body>
 </html>
