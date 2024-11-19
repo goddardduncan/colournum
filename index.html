@@ -518,6 +518,74 @@ function toggleLabelBoldness(label, isBold) {
         }
 
         updateCanvasDisplay();
+        let offsetX = 0; // Current horizontal offset
+let offsetY = 0; // Current vertical offset
+
+function updateCanvasTransform(canvas) {
+    canvas.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${currentCanvasScale})`;
+}
+
+document.addEventListener('keydown', (event) => {
+    const panStep = 10; // Amount to pan with each key press
+
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+        if (currentCanvasIndex !== -1) {
+            const canvas = canvases[currentCanvasIndex];
+
+            if (event.key === 'ArrowUp') {
+                offsetY += panStep;
+            } else if (event.key === 'ArrowDown') {
+                offsetY -= panStep;
+            } else if (event.key === 'ArrowLeft') {
+                offsetX += panStep;
+            } else if (event.key === 'ArrowRight') {
+                offsetX -= panStep;
+            }
+
+            updateCanvasTransform(canvas);
+        }
+    } else {
+        // Handle other keys as before
+        if (event.key === ']') {
+            currentCanvasIndex = (currentCanvasIndex + 1) % canvases.length;
+        } else if (event.key === '[') {
+            currentCanvasIndex = (currentCanvasIndex - 1 + canvases.length) % canvases.length;
+        } else if (event.key === 'Escape') {
+            currentCanvasIndex = -1;
+        } else if (event.key === 'z') {
+            currentCanvasScale += 0.05;
+        } else if (event.key === 'x') {
+            currentCanvasScale = Math.max(0.7, currentCanvasScale - 0.05);
+        }
+
+        updateCanvasDisplay();
+    }
+});
+
+function updateCanvasDisplay() {
+    if (currentCanvasIndex === -1) {
+        document.querySelector('.canvas-container').style.display = 'grid';
+        canvases.forEach(canvas => {
+            canvas.style.display = 'block';
+            canvas.style.transform = 'scale(1)';
+            canvas.style.zIndex = '1';
+            offsetX = 0;
+            offsetY = 0; // Reset offsets when showing all canvases
+        });
+    } else {
+        document.querySelector('.canvas-container').style.display = 'flex';
+        canvases.forEach((canvas, index) => {
+            if (index === currentCanvasIndex) {
+                canvas.style.display = 'block';
+                updateCanvasTransform(canvas);
+                canvas.style.zIndex = '10';
+            } else {
+                canvas.style.display = 'none';
+                canvas.style.zIndex = '1';
+            }
+        });
+    }
+}
     </script>
 </body>
 </html>
