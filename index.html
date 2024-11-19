@@ -477,16 +477,22 @@ let offsetX = 0;
 let offsetY = 0;
 const panStep = 20; // Amount to pan for each arrow key press
 
+let lastEnterPressTime = 0;
+
 document.addEventListener('keydown', (event) => {
-      // Prevent default scrolling behavior for Up and Down Arrow keys
-    if (event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-        event.preventDefault();
-    }
     if (event.key === 'Enter') {
-        // Reset canvas scale and panning
-        currentCanvasScale = 1; // Reset zoom
-        offsetX = 0; // Reset horizontal panning
-        offsetY = 0; // Reset vertical panning
+        const currentTime = new Date().getTime();
+        if (currentTime - lastEnterPressTime <= 1000 && currentCanvasIndex !== -1) {
+            // Double Enter detected within 1 second and currently on a single canvas
+            currentCanvasIndex = -1; // Show all canvases
+            updateCanvasDisplay();
+        } else {
+            // Reset zoom and panning
+            currentCanvasScale = 1; // Reset zoom
+            offsetX = 0; // Reset horizontal panning
+            offsetY = 0; // Reset vertical panning
+        }
+        lastEnterPressTime = currentTime;
     }
     if (event.key === ']') {
         currentCanvasIndex = (currentCanvasIndex + 1) % canvases.length; // Move right
