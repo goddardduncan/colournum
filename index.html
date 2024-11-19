@@ -131,7 +131,8 @@
                 };
                 img.src = URL.createObjectURL(file);
             }
-          
+            // Deselect the "Choose file" button
+            uploadBtn.blur();
         });
 
         // Event listener for grid slider
