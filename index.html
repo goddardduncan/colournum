@@ -131,19 +131,24 @@
                 };
                 img.src = URL.createObjectURL(file);
             }
+          
         });
 
         // Event listener for grid slider
         gridSlider.addEventListener('input', () => {
             const selectedGrid = gridOptions[gridSlider.value - 1];
             reloadContourCanvas(selectedGrid.columns, selectedGrid.rows);
+            redrawCanvas();
         });
 
-        // Event listener for grid size slider
-        gridSizeSlider.addEventListener('input', () => {
-            gridSize = parseInt(gridSizeSlider.value);
-            reloadContourCanvas(gridOptions[gridSlider.value - 1].columns, gridOptions[gridSlider.value - 1].rows);
-        });
+// Event listener for grid size slider
+gridSizeSlider.addEventListener('input', () => {
+    gridSize = parseInt(gridSizeSlider.value); // Update gridSize based on slider value
+    const selectedGrid = gridOptions[gridSlider.value - 1]; // Get the current grid option
+    reloadContourCanvas(selectedGrid.columns, selectedGrid.rows); // Redraw the canvas
+    redrawCanvas();
+});
+
 
         // Event listener for label slider
         labelSlider.addEventListener('input', () => {
@@ -469,7 +474,7 @@ function toggleLabelBoldness(label, isBold) {
 // Variables for panning
 let offsetX = 0;
 let offsetY = 0;
-const panStep = 10; // Amount to pan for each arrow key press
+const panStep = 20; // Amount to pan for each arrow key press
 
 document.addEventListener('keydown', (event) => {
       // Prevent default scrolling behavior for Up and Down Arrow keys
@@ -488,16 +493,16 @@ document.addEventListener('keydown', (event) => {
         currentCanvasIndex = (currentCanvasIndex - 1 + canvases.length) % canvases.length; // Move left
     } else if (event.key === 'Escape') {
         currentCanvasIndex = -1; // Show all canvases
-    } else if (event.key === 'z' || (currentCanvasIndex === 1 && event.key === 'a')) {
+    } else if (event.key === 'x' || (currentCanvasIndex === 1 && event.key === 'a')) {
         if (currentCanvasIndex === 1) {
-            labelSlider.value = Math.max(parseInt(labelSlider.value) - 1, labelSlider.min); // Decrease label
+            labelSlider.value = Math.max(parseInt(labelSlider.value) + 1, labelSlider.min); // Decrease label
             labelSlider.dispatchEvent(new Event('input'));
         } else {
             currentCanvasScale += (currentCanvasIndex === 3 ? 0.9 : 0.2); // Larger zoom for futureCanvas
         }
-    } else if (event.key === 'x' || (currentCanvasIndex === 1 && event.key === 's')) {
+    } else if (event.key === 'z' || (currentCanvasIndex === 1 && event.key === 's')) {
         if (currentCanvasIndex === 1) {
-            labelSlider.value = Math.min(parseInt(labelSlider.value) + 1, labelSlider.max); // Increase label
+            labelSlider.value = Math.min(parseInt(labelSlider.value) - 1, labelSlider.max); // Increase label
             labelSlider.dispatchEvent(new Event('input'));
         } else {
             currentCanvasScale = Math.max(0.7, currentCanvasScale - (currentCanvasIndex === 3 ? 0.9 : 0.2)); // Larger zoom for futureCanvas
